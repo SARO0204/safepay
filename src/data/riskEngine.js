@@ -1,4 +1,4 @@
-import { userHistory } from './mockData.js';
+import { userHistory } from "./mockData.js";
 
 /**
  * Rule-based risk scoring.
@@ -29,7 +29,7 @@ export function calculateRisk(payment) {
   // ── Recipient trust ──────────────────────────────────────
   if (!payment.trusted && payment.payCount === 0) {
     score += 20;
-    flags.push('New recipient — first time paying this person');
+    flags.push("New recipient — first time paying this person");
   } else if (payment.payCount >= 5) {
     score -= 10;
   }
@@ -39,37 +39,49 @@ export function calculateRisk(payment) {
     score -= 10;
   } else {
     score += 15;
-    flags.push('UPI ID is not verified');
+    flags.push("UPI ID is not verified");
   }
 
   // ── Amount vs. user average ───────────────────────────────
-  const avg   = userHistory.avgTransactionAmount;
+  const history = payment.transactionHistory || [];
+  const avg = history.length
+    ? history.reduce(
+        (total, transaction) => total + Number(transaction.amount || 0),
+        0,
+      ) / history.length
+    : userHistory.avgTransactionAmount;
   const ratio = payment.amount / avg;
 
   if (ratio > 10) {
     score += 30;
     flags.push(
-      `₹${payment.amount.toLocaleString('en-IN')} is ${Math.round(ratio)}x your average payment`
+      `₹${payment.amount.toLocaleString("en-IN")} is ${Math.round(ratio)}x your average payment`,
     );
   } else if (ratio > 5) {
     score += 20;
-    flags.push('Amount is much higher than your usual transactions');
+    flags.push("Amount is much higher than your usual transactions");
   } else if (ratio > 3) {
     score += 10;
-    flags.push('Amount is higher than your usual transactions');
+    flags.push("Amount is higher than your usual transactions");
   }
 
   if (payment.amount > 10000) {
     score += 20;
-    flags.push('High-value transaction (above ₹10,000)');
+    flags.push("High-value transaction (above ₹10,000)");
   } else if (payment.amount > 5000) {
     score += 10;
-    flags.push('Above-average transaction amount');
+    flags.push("Above-average transaction amount");
   }
 
   // ── Category anomaly ──────────────────────────────────────
-  const cat    = payment.category || 'Other';
-  const catAvg = userHistory.categoryAverages[cat] || 500;
+  const cat = payment.category || "Other";
+  const historicalCategoryAmounts = history
+    .filter((transaction) => transaction.category === cat)
+    .map((transaction) => Number(transaction.amount || 0));
+  const catAvg = historicalCategoryAmounts.length
+    ? historicalCategoryAmounts.reduce((total, amount) => total + amount, 0) /
+      historicalCategoryAmounts.length
+    : userHistory.categoryAverages[cat] || 500;
 
   if (payment.amount > catAvg * 8) {
     score += 20;
@@ -85,30 +97,43 @@ export function calculateRisk(payment) {
   let level, label, color, bgColor, borderColor, description, emoji;
 
   if (score <= 30) {
-    level       = 'low';
-    label       = 'Safe to Pay';
-    color       = '#22c55e';
-    bgColor     = 'rgba(34, 197, 94, 0.08)';
-    borderColor = 'rgba(34, 197, 94, 0.25)';
-    description = 'This transaction looks normal based on your payment history. Safe to proceed.';
-    emoji       = '🟢';
+    level = "low";
+    label = "Safe to Pay";
+    color = "#22c55e";
+    bgColor = "rgba(34, 197, 94, 0.08)";
+    borderColor = "rgba(34, 197, 94, 0.25)";
+    description =
+      "This transaction looks normal based on your payment history. Safe to proceed.";
+    emoji = "🟢";
   } else if (score <= 60) {
-    level       = 'medium';
-    label       = 'Review Payment';
-    color       = '#f59e0b';
-    bgColor     = 'rgba(245, 158, 11, 0.08)';
-    borderColor = 'rgba(245, 158, 11, 0.25)';
-    description = 'Please verify the recipient details and amount before proceeding.';
-    emoji       = '🟡';
+    level = "medium";
+    label = "Review Payment";
+    color = "#f59e0b";
+    bgColor = "rgba(245, 158, 11, 0.08)";
+    borderColor = "rgba(245, 158, 11, 0.25)";
+    description =
+      "Please verify the recipient details and amount before proceeding.";
+    emoji = "🟡";
   } else {
-    level       = 'high';
-    label       = 'Extra Verification';
-    color       = '#ef4444';
-    bgColor     = 'rgba(239, 68, 68, 0.08)';
-    borderColor = 'rgba(239, 68, 68, 0.25)';
-    description = 'Multiple risk signals detected. Carefully verify before paying.';
-    emoji       = '🔴';
+    level = "high";
+    label = "Extra Verification";
+    color = "#ef4444";
+    bgColor = "rgba(239, 68, 68, 0.08)";
+    borderColor = "rgba(239, 68, 68, 0.25)";
+    description =
+      "Multiple risk signals detected. Carefully verify before paying.";
+    emoji = "🔴";
   }
 
-  return { score, level, label, color, bgColor, borderColor, description, flags, emoji };
+  return {
+    score,
+    level,
+    label,
+    color,
+    bgColor,
+    borderColor,
+    description,
+    flags,
+    emoji,
+  };
 }
