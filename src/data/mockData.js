@@ -1,6 +1,6 @@
 export const currentUser = {
   name: "Prabu",
-  balance: 24350.0,
+  balance: 10000,
   monthlyBudget: 20000,
   upiId: "prabusaravana20@okicici",
   phone: "6380340204",

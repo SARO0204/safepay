@@ -54,6 +54,7 @@ export default function VerificationScreen() {
   );
   const [amountConfirmed, setAmountConfirmed] = useState(!isQrPayment);
   const [amountError, setAmountError] = useState("");
+  const [failureState, setFailureState] = useState(null);
   const [pinMode, setPinMode] = useState(null);
   const [pinInput, setPinInput] = useState("");
   const [pinError, setPinError] = useState("");
@@ -87,6 +88,20 @@ export default function VerificationScreen() {
   const completePayment = () => {
     if (paymentCommittedRef.current || !amount) {
       setAmountError("Enter an amount greater than ₹0 before paying.");
+      return;
+    }
+    const currentBalance = Number(balance ?? 0);
+    if (amount > currentBalance) {
+      setFailureState({
+        title: "Transaction failed due to insufficient bank balance",
+        availableBalance: currentBalance,
+        paymentAmount: amount,
+      });
+      window.setTimeout(() => {
+        setFailureState(null);
+        sessionStorage.removeItem(PAYMENT_DRAFT_KEY);
+        navigate("/");
+      }, 1500);
       return;
     }
     const now = new Date();
@@ -263,6 +278,32 @@ export default function VerificationScreen() {
             >
               This payment is significantly higher than your usual amount.
               Please verify the recipient and amount.
+            </p>
+          </section>
+        )}
+        {failureState && (
+          <section
+            className="info-card"
+            style={{ padding: 17, marginBottom: 13 }}
+          >
+            <strong style={{ color: "#b42318", fontSize: 14 }}>
+              {failureState.title}
+            </strong>
+            <p
+              style={{
+                color: "#465065",
+                fontSize: 12,
+                lineHeight: 1.6,
+                marginTop: 8,
+              }}
+            >
+              Available balance: ₹
+              {Number(failureState.availableBalance || 0).toLocaleString(
+                "en-IN",
+              )}
+              <br />
+              Payment amount: ₹
+              {Number(failureState.paymentAmount || 0).toLocaleString("en-IN")}
             </p>
           </section>
         )}

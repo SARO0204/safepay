@@ -14,6 +14,7 @@ import {
 
 const STORAGE_KEY = "upi-safe-payment-state";
 const PIN_STORAGE_KEY = "upi-safe-payment-pin";
+const DEFAULT_WALLET_BALANCE = 10000;
 const CATEGORIES = [
   "Food",
   "Shopping",
@@ -104,6 +105,20 @@ export function PaymentProvider({ children }) {
           );
           return result;
         }, {});
+        const hasMeaningfulStoredHistory = transactions.some(
+          (transaction) =>
+            Number.isFinite(Number(transaction.amount)) &&
+            Number(transaction.amount) > 0,
+        );
+        const storedBalance = Number(parsed.balance);
+        const normalizedBalance =
+          Number.isFinite(storedBalance) && storedBalance >= 0
+            ? storedBalance
+            : calculateBalance(transactions);
+        const balance =
+          normalizedBalance === 0 && !hasMeaningfulStoredHistory
+            ? DEFAULT_WALLET_BALANCE
+            : normalizedBalance;
         return {
           ...parsed,
           transactions,
@@ -113,7 +128,7 @@ export function PaymentProvider({ children }) {
             parsed.monthlyBudget,
             user.monthlyBudget,
           ),
-          balance: calculateBalance(transactions),
+          balance,
         };
       }
     } catch {
@@ -125,7 +140,7 @@ export function PaymentProvider({ children }) {
       spending: calculateSpending(initialTransactions),
       monthlyBudget: user.monthlyBudget,
       categoryBudgets: DEFAULT_CATEGORY_BUDGETS,
-      balance: calculateBalance(initialTransactions),
+      balance: DEFAULT_WALLET_BALANCE,
     };
   });
   const stateRef = useRef(state);
