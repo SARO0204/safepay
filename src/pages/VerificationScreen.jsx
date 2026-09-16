@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { calculateRisk } from "../data/riskEngine.js";
 import { usePayments } from "../context/PaymentContext.jsx";
@@ -21,28 +21,75 @@ const DEFAULT_PAYMENT = {
   isVerifiedMerchant: true,
   category: "Shopping",
 };
+const PAYMENT_DRAFT_KEY = "upi-safe-payment-draft";
+
+function readPaymentDraft() {
+  try {
+    const saved = sessionStorage.getItem(PAYMENT_DRAFT_KEY);
+    return saved ? JSON.parse(saved) : null;
+  } catch {
+    return null;
+  }
+}
+
+function parseAmount(value) {
+  const amount = Number(value);
+  return Number.isFinite(amount) && amount > 0 ? amount : null;
+}
 
 export default function VerificationScreen() {
   const navigate = useNavigate();
   const location = useLocation();
   const { commitPayment, transactions } = usePayments();
   const paymentCommittedRef = useRef(false);
+  const incomingPayment = location.state?.payment;
+  const storedPayment = readPaymentDraft();
+  const payment = incomingPayment || storedPayment || DEFAULT_PAYMENT;
+  const from = location.state?.from || storedPayment?.from || "/";
+  const isQrPayment = from === "/scan";
   const [isPaying, setIsPaying] = useState(false);
-  const payment = location.state?.payment || DEFAULT_PAYMENT;
+  const [amountInput, setAmountInput] = useState(
+    payment.amount == null ? "" : String(payment.amount),
+  );
+  const [amountConfirmed, setAmountConfirmed] = useState(!isQrPayment);
+  const [amountError, setAmountError] = useState("");
   const [category, setCategory] = useState(payment.category || "Other");
+  const amount = parseAmount(amountInput);
+  const paymentForReview = { ...payment, amount };
   const risk = calculateRisk({
-    ...payment,
+    ...paymentForReview,
     category,
     transactionHistory: transactions,
   });
   const unusual = risk.flags.some((flag) => /amount|usual/i.test(flag));
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(
+        PAYMENT_DRAFT_KEY,
+        JSON.stringify({ ...payment, amount: amountInput, from }),
+      );
+    } catch {}
+  }, [amountInput, from, payment]);
+
+  const continueToReview = () => {
+    if (!amount) {
+      setAmountError("Enter an amount greater than ₹0.");
+      return;
+    }
+    setAmountError("");
+    setAmountConfirmed(true);
+  };
+
   const pay = () => {
-    if (paymentCommittedRef.current) return;
+    if (paymentCommittedRef.current || !amount) {
+      setAmountError("Enter an amount greater than ₹0 before paying.");
+      return;
+    }
     paymentCommittedRef.current = true;
     setIsPaying(true);
     const now = new Date();
     const txn = commitPayment({
-      ...payment,
+      ...paymentForReview,
       category,
       riskResult: risk,
       riskLevel: risk.level,
@@ -58,15 +105,74 @@ export default function VerificationScreen() {
         minute: "2-digit",
       }),
     });
+    sessionStorage.removeItem(PAYMENT_DRAFT_KEY);
     navigate("/success", { state: { txn } });
   };
+  if (isQrPayment && !amountConfirmed) {
+    return (
+      <div className="app-page verify-page">
+        <header className="page-header">
+          <button
+            className="icon-button"
+            onClick={() => {
+              sessionStorage.removeItem(PAYMENT_DRAFT_KEY);
+              navigate(from);
+            }}
+          >
+            ←
+          </button>
+          <div>
+            <p className="eyebrow">RECIPIENT DETAILS</p>
+            <h1>Enter amount</h1>
+            <p className="page-subtitle">Choose how much you want to pay</p>
+          </div>
+        </header>
+        <main className="verify-content">
+          <section className="verify-card">
+            <div className="verify-recipient">
+              <span className="verify-avatar">
+                {payment.recipient?.[0] || "?"}
+              </span>
+              <div>
+                <strong>{payment.recipient}</strong>
+                <span>{payment.upiId}</span>
+              </div>
+            </div>
+            <label className="field-label" htmlFor="payment-amount">
+              Amount
+            </label>
+            <input
+              id="payment-amount"
+              className="field-input"
+              type="number"
+              min="0.01"
+              step="0.01"
+              inputMode="decimal"
+              value={amountInput}
+              onChange={(event) => {
+                setAmountInput(event.target.value);
+                setAmountError("");
+              }}
+              placeholder="₹ 0"
+              autoFocus
+            />
+            {amountError && <p className="error-text">{amountError}</p>}
+            <button
+              className="button button-primary"
+              onClick={continueToReview}
+              style={{ marginTop: 20 }}
+            >
+              Continue
+            </button>
+          </section>
+        </main>
+      </div>
+    );
+  }
   return (
     <div className="app-page verify-page">
       <header className="page-header">
-        <button
-          className="icon-button"
-          onClick={() => navigate(location.state?.from || "/")}
-        >
+        <button className="icon-button" onClick={() => navigate(from)}>
           ←
         </button>
         <div>
@@ -78,9 +184,7 @@ export default function VerificationScreen() {
       <main className="verify-content">
         <section className="verify-card">
           <p className="summary-label">Paying</p>
-          <h2 className="verify-amount">
-            ₹{Number(payment.amount).toLocaleString("en-IN")}
-          </h2>
+          <h2 className="verify-amount">₹{amount.toLocaleString("en-IN")}</h2>
           <div className="verify-recipient">
             <span className="verify-avatar">
               {payment.recipient?.[0] || "?"}
@@ -182,15 +286,20 @@ export default function VerificationScreen() {
           <button
             className="button button-primary"
             onClick={pay}
-            disabled={isPaying}
+            disabled={isPaying || !amount}
           >
             {isPaying
               ? "Processing…"
-              : `Pay ₹${Number(payment.amount).toLocaleString("en-IN")}`}
+              : amount
+                ? `Pay ₹${amount.toLocaleString("en-IN")}`
+                : "Enter amount"}
           </button>
           <button
             className="button button-secondary"
-            onClick={() => navigate("/")}
+            onClick={() => {
+              sessionStorage.removeItem(PAYMENT_DRAFT_KEY);
+              navigate("/");
+            }}
           >
             Cancel
           </button>
