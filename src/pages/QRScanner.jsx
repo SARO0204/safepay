@@ -63,83 +63,113 @@ export default function QRScanner() {
   const scannerRef = useRef(null);
   const runRef = useRef(0);
   const mountedRef = useRef(true);
+  const operationRef = useRef(Promise.resolve());
+  const decodedRef = useRef(false);
   const [status, setStatus] = useState("starting");
   const [errorType, setErrorType] = useState(null);
   const [message, setMessage] = useState("Requesting camera access...");
 
-  const stopScanner = async () => {
+  const releaseVideoTracks = () => {
+    const reader = document.getElementById("upi-safe-reader");
+    reader?.querySelectorAll("video").forEach((video) => {
+      const stream = video.srcObject;
+      stream?.getTracks().forEach((track) => track.stop());
+      video.srcObject = null;
+    });
+  };
+
+  const cleanupScanner = async () => {
     const scanner = scannerRef.current;
     scannerRef.current = null;
-    if (!scanner) return;
     try {
-      if (scanner.isScanning) await scanner.stop();
-      await scanner.clear();
+      if (scanner) {
+        if (scanner.isScanning) await scanner.stop();
+        await scanner.clear();
+      }
     } catch (error) {
       console.error("QR Scanner cleanup error:", error);
+    } finally {
+      releaseVideoTracks();
     }
   };
 
-  const startScanner = async () => {
-    const run = ++runRef.current;
-    await stopScanner();
-    if (!mountedRef.current) return;
-    setStatus("starting");
-    setErrorType(null);
-    setMessage("Requesting camera access...");
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setErrorType("unsupported");
-      setStatus("error");
-      return;
-    }
+  const queueScannerOperation = (operation) => {
+    const next = operationRef.current.then(operation, operation);
+    operationRef.current = next.catch(() => {});
+    return next;
+  };
 
-    try {
-      const cameras = await Html5Qrcode.getCameras();
-      if (run !== runRef.current || !mountedRef.current) return;
-      if (!cameras.length) throw new Error("No camera detected");
-      const environmentCamera = cameras.find((camera) =>
-        /back|rear|environment/i.test(camera.label),
-      );
-      const cameraId = environmentCamera?.id || cameras[0].id;
-      const onDecode = async (payload) => {
-        const payment = parseUpiPayload(payload);
-        if (!payment) {
-          setStatus("invalid");
-          setMessage("Please scan a valid UPI payment QR.");
-          return;
-        }
-        await stopScanner();
-        if (!mountedRef.current || run !== runRef.current) return;
-        setStatus("success");
-        navigate("/verify", { state: { from: "/scan", payment } });
-      };
-      const config = {
-        fps: 10,
-        qrbox: { width: 240, height: 240 },
-        aspectRatio: 1,
-      };
-      try {
-        const scanner = new Html5Qrcode("upi-safe-reader");
-        scannerRef.current = scanner;
-        await scanner.start(cameraId, config, onDecode, () => {});
-      } catch (firstError) {
-        console.error("QR Scanner Error:", firstError);
-        await stopScanner();
-        if (cameras.length < 2 || cameraId === cameras[0].id) throw firstError;
-        const fallback = new Html5Qrcode("upi-safe-reader");
-        scannerRef.current = fallback;
-        await fallback.start(cameras[0].id, config, onDecode, () => {});
-      }
-      if (mountedRef.current && run === runRef.current) {
-        setStatus("scanning");
-        setMessage("Camera active. Point it at a UPI payment QR.");
-      }
-    } catch (error) {
-      console.error("QR Scanner Error:", error);
-      if (mountedRef.current && run === runRef.current) {
-        setErrorType(classifyCameraError(error));
+  const stopScanner = () => queueScannerOperation(cleanupScanner);
+
+  const startScanner = () => {
+    const run = ++runRef.current;
+    return queueScannerOperation(async () => {
+      await cleanupScanner();
+      if (!mountedRef.current || run !== runRef.current) return;
+      setStatus("starting");
+      setErrorType(null);
+      setMessage("Requesting camera access...");
+      decodedRef.current = false;
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setErrorType("unsupported");
         setStatus("error");
+        return;
       }
-    }
+
+      try {
+        const cameras = await Html5Qrcode.getCameras();
+        if (run !== runRef.current || !mountedRef.current) return;
+        if (!cameras.length) throw new Error("No camera detected");
+        const environmentCamera = cameras.find((camera) =>
+          /back|rear|environment/i.test(camera.label),
+        );
+        const cameraId = environmentCamera?.id || cameras[0].id;
+        const onDecode = async (payload) => {
+          const payment = parseUpiPayload(payload);
+          if (!payment) {
+            setStatus("invalid");
+            setMessage("Please scan a valid UPI payment QR.");
+            return;
+          }
+          if (decodedRef.current) return;
+          decodedRef.current = true;
+          await stopScanner();
+          if (!mountedRef.current || run !== runRef.current) return;
+          setStatus("success");
+          navigate("/verify", { state: { from: "/scan", payment } });
+        };
+        const config = {
+          fps: 10,
+          qrbox: { width: 240, height: 240 },
+          aspectRatio: 1,
+        };
+        try {
+          const scanner = new Html5Qrcode("upi-safe-reader");
+          scannerRef.current = scanner;
+          await scanner.start(cameraId, config, onDecode, () => {});
+        } catch (firstError) {
+          console.error("QR Scanner Error:", firstError);
+          await cleanupScanner();
+          if (run !== runRef.current) return;
+          if (cameras.length < 2 || cameraId === cameras[0].id)
+            throw firstError;
+          const fallback = new Html5Qrcode("upi-safe-reader");
+          scannerRef.current = fallback;
+          await fallback.start(cameras[0].id, config, onDecode, () => {});
+        }
+        if (mountedRef.current && run === runRef.current) {
+          setStatus("scanning");
+          setMessage("Camera active. Point it at a UPI payment QR.");
+        }
+      } catch (error) {
+        console.error("QR Scanner Error:", error);
+        await cleanupScanner();
+        if (mountedRef.current && run === runRef.current) {
+          setErrorType(classifyCameraError(error));
+          setStatus("error");
+        }
+      }
+    });
   };
 
   useEffect(() => {
