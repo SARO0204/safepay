@@ -152,10 +152,10 @@ export const newRecipients = [
 ];
 
 export const spendingByCategory = [
-  { category: "Food", spent: 3200, budget: 8000, icon: "🍔" },
-  { category: "Shopping", spent: 4800, budget: 8000, icon: "🛍️" },
-  { category: "Travel", spent: 1500, budget: 5000, icon: "✈️" },
-  { category: "Bills", spent: 2950, budget: 5000, icon: "📄" },
+  { category: "Food", budget: 8000, icon: "🍔" },
+  { category: "Shopping", budget: 8000, icon: "🛍️" },
+  { category: "Travel", budget: 5000, icon: "✈️" },
+  { category: "Bills", budget: 5000, icon: "📄" },
 ];
 
 // Demo scenarios for QR Scanner — three risk levels

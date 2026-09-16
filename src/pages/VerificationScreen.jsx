@@ -22,6 +22,7 @@ const DEFAULT_PAYMENT = {
   category: "Shopping",
 };
 const PAYMENT_DRAFT_KEY = "upi-safe-payment-draft";
+const PIN_THRESHOLD = 1000;
 
 function readPaymentDraft() {
   try {
@@ -40,7 +41,8 @@ function parseAmount(value) {
 export default function VerificationScreen() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { commitPayment, transactions } = usePayments();
+  const { commitPayment, transactions, paymentPin, setPaymentPin } =
+    usePayments();
   const paymentCommittedRef = useRef(false);
   const incomingPayment = location.state?.payment;
   const storedPayment = readPaymentDraft();
@@ -53,6 +55,10 @@ export default function VerificationScreen() {
   );
   const [amountConfirmed, setAmountConfirmed] = useState(!isQrPayment);
   const [amountError, setAmountError] = useState("");
+  const [pinMode, setPinMode] = useState(null);
+  const [pinInput, setPinInput] = useState("");
+  const [pinConfirmation, setPinConfirmation] = useState("");
+  const [pinError, setPinError] = useState("");
   const [category, setCategory] = useState(payment.category || "Other");
   const amount = parseAmount(amountInput);
   const paymentForReview = { ...payment, amount };
@@ -80,7 +86,7 @@ export default function VerificationScreen() {
     setAmountConfirmed(true);
   };
 
-  const pay = () => {
+  const completePayment = () => {
     if (paymentCommittedRef.current || !amount) {
       setAmountError("Enter an amount greater than ₹0 before paying.");
       return;
@@ -107,6 +113,51 @@ export default function VerificationScreen() {
     });
     sessionStorage.removeItem(PAYMENT_DRAFT_KEY);
     navigate("/success", { state: { txn } });
+  };
+
+  const pay = () => {
+    if (!amount) {
+      setAmountError("Enter an amount greater than ₹0 before paying.");
+      return;
+    }
+    if (amount <= PIN_THRESHOLD) {
+      completePayment();
+      return;
+    }
+    setPinInput("");
+    setPinConfirmation("");
+    setPinError("");
+    setPinMode(paymentPin ? "verify" : "setup");
+  };
+
+  const submitPin = () => {
+    if (pinMode === "setup") {
+      if (!/^\d{4}$/.test(pinInput)) {
+        setPinError("Create a 4-digit PIN.");
+        return;
+      }
+      if (pinInput !== pinConfirmation) {
+        setPinError("PINs do not match.");
+        return;
+      }
+      setPaymentPin(pinInput);
+      setPinMode(null);
+      completePayment();
+      return;
+    }
+    if (pinInput !== paymentPin) {
+      setPinError("Incorrect PIN. Payment is blocked.");
+      return;
+    }
+    setPinMode(null);
+    completePayment();
+  };
+
+  const closePinModal = () => {
+    setPinMode(null);
+    setPinInput("");
+    setPinConfirmation("");
+    setPinError("");
   };
   if (isQrPayment && !amountConfirmed) {
     return (
@@ -305,6 +356,76 @@ export default function VerificationScreen() {
           </button>
         </div>
       </main>
+      {pinMode && (
+        <div className="profile-modal-backdrop" role="presentation">
+          <section
+            className="profile-demo-modal pin-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pin-modal-title"
+          >
+            <button
+              className="profile-modal-close"
+              onClick={closePinModal}
+              aria-label="Close PIN dialog"
+            >
+              ×
+            </button>
+            <p className="eyebrow">DEMO PAYMENT SECURITY</p>
+            <h2 id="pin-modal-title">
+              {pinMode === "setup" ? "Set Payment PIN" : "Verify Payment PIN"}
+            </h2>
+            <p className="pin-modal-copy">
+              {pinMode === "setup"
+                ? "Create a 4-digit PIN for payments above ₹1,000."
+                : "Enter your PIN to approve this payment."}
+            </p>
+            <label className="modal-field" htmlFor="payment-pin">
+              {pinMode === "setup" ? "New PIN" : "Payment PIN"}
+              <input
+                id="payment-pin"
+                className="field-input pin-input"
+                type="password"
+                inputMode="numeric"
+                autoComplete="off"
+                maxLength={4}
+                value={pinInput}
+                onChange={(event) => {
+                  setPinInput(event.target.value.replace(/\D/g, ""));
+                  setPinError("");
+                }}
+                autoFocus
+              />
+            </label>
+            {pinMode === "setup" && (
+              <label className="modal-field" htmlFor="payment-pin-confirmation">
+                Confirm PIN
+                <input
+                  id="payment-pin-confirmation"
+                  className="field-input pin-input"
+                  type="password"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  maxLength={4}
+                  value={pinConfirmation}
+                  onChange={(event) => {
+                    setPinConfirmation(event.target.value.replace(/\D/g, ""));
+                    setPinError("");
+                  }}
+                />
+              </label>
+            )}
+            {pinError && <p className="error-text">{pinError}</p>}
+            <p className="pin-demo-note">
+              Demo only: this PIN is stored in localStorage and is not real bank
+              authentication.
+            </p>
+            <button className="button button-primary" onClick={submitPin}>
+              {pinMode === "setup" ? "Set PIN & Pay" : "Verify & Pay"}
+            </button>
+          </section>
+        </div>
+      )}
     </div>
   );
 }
