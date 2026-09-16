@@ -41,7 +41,7 @@ function parseAmount(value) {
 export default function VerificationScreen() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { commitPayment, transactions, paymentPin } = usePayments();
+  const { commitPayment, transactions, paymentPin, balance } = usePayments();
   const paymentCommittedRef = useRef(false);
   const incomingPayment = location.state?.payment;
   const storedPayment = readPaymentDraft();
@@ -89,10 +89,8 @@ export default function VerificationScreen() {
       setAmountError("Enter an amount greater than ₹0 before paying.");
       return;
     }
-    paymentCommittedRef.current = true;
-    setIsPaying(true);
     const now = new Date();
-    const txn = commitPayment({
+    const result = commitPayment({
       ...paymentForReview,
       category,
       riskResult: risk,
@@ -109,8 +107,17 @@ export default function VerificationScreen() {
         minute: "2-digit",
       }),
     });
+    if (!result?.transaction) {
+      setAmountError(
+        result?.error ||
+          `Insufficient balance. Available balance: ₹${Number(balance || 0).toLocaleString("en-IN")}.`,
+      );
+      return;
+    }
+    paymentCommittedRef.current = true;
+    setIsPaying(true);
     sessionStorage.removeItem(PAYMENT_DRAFT_KEY);
-    navigate("/success", { state: { txn } });
+    navigate("/success", { state: { txn: result.transaction } });
   };
 
   const pay = () => {

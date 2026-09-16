@@ -7,6 +7,7 @@ import SpendingDashboard from "./pages/SpendingDashboard.jsx";
 import TrustedRecipients from "./pages/TrustedRecipients.jsx";
 import SendMoney from "./pages/SendMoney.jsx";
 import Profile from "./pages/Profile.jsx";
+import TransactionHistory from "./pages/TransactionHistory.jsx";
 import { PaymentProvider } from "./context/PaymentContext.jsx";
 
 export default function App() {
@@ -23,6 +24,7 @@ export default function App() {
             <Route path="/spending" element={<SpendingDashboard />} />
             <Route path="/trusted" element={<TrustedRecipients />} />
             <Route path="/profile" element={<Profile />} />
+            <Route path="/transactions" element={<TransactionHistory />} />
           </Routes>
         </div>
       </PaymentProvider>

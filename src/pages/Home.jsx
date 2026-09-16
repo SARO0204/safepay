@@ -76,7 +76,10 @@ export default function Home() {
       <section className="home-section">
         <div className="section-row">
           <h2 className="section-title">Recent transactions</h2>
-          <span className="section-link" onClick={() => navigate("/spending")}>
+          <span
+            className="section-link"
+            onClick={() => navigate("/transactions")}
+          >
             See all
           </span>
         </div>

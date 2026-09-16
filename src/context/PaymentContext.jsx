@@ -1,4 +1,11 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   spendingByCategory as initialSpending,
   transactions as initialTransactions,
@@ -121,27 +128,65 @@ export function PaymentProvider({ children }) {
       balance: calculateBalance(initialTransactions),
     };
   });
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   }, [state]);
 
   const commitPayment = (payment) => {
+    const current = stateRef.current;
     const amount = parseTransactionAmount(payment.amount);
-    if (amount == null) return null;
+    if (amount == null) {
+      return {
+        transaction: null,
+        error: "Enter a valid amount greater than ₹0.",
+      };
+    }
+    if (!payment.recipient || !payment.upiId?.includes("@")) {
+      return {
+        transaction: null,
+        error: "Enter a valid recipient and UPI ID.",
+      };
+    }
+    const availableBalance = parseMoney(current.balance) ?? 0;
+    if (amount > availableBalance) {
+      return {
+        transaction: null,
+        error: `Insufficient balance. Available balance: ₹${availableBalance.toLocaleString("en-IN")}. You cannot pay more than your available balance.`,
+      };
+    }
     const transaction = {
       ...payment,
       amount,
       id: payment.id || `T${Date.now()}`,
       status: "success",
     };
-    setState((current) => ({
-      ...current,
-      balance: calculateBalance([transaction, ...current.transactions]),
-      transactions: [transaction, ...current.transactions],
-      spending: calculateSpending([transaction, ...current.transactions]),
-    }));
-    return transaction;
+    let committed = false;
+    setState((latest) => {
+      const latestBalance = parseMoney(latest.balance) ?? 0;
+      if (
+        latestBalance < amount ||
+        latest.transactions.some((item) => item.id === transaction.id)
+      ) {
+        return latest;
+      }
+      const transactions = [transaction, ...latest.transactions];
+      committed = true;
+      return {
+        ...latest,
+        balance: latestBalance - amount,
+        transactions,
+        spending: calculateSpending(transactions),
+      };
+    });
+    return committed
+      ? { transaction, error: null }
+      : {
+          transaction: null,
+          error: `Insufficient balance. Available balance: ₹${availableBalance.toLocaleString("en-IN")}. You cannot pay more than your available balance.`,
+        };
   };
 
   const updateBudgets = ({ monthlyBudget, categoryBudgets }) => {
@@ -177,6 +222,7 @@ export function PaymentProvider({ children }) {
 
   const value = useMemo(() => {
     const spending = calculateSpending(state.transactions);
+    const completedTransactions = getCompletedTransactions(state.transactions);
     const monthlySpent = Object.values(spending).reduce(
       (total, amount) => total + amount,
       0,
@@ -184,6 +230,7 @@ export function PaymentProvider({ children }) {
     return {
       ...state,
       spending,
+      completedTransactions,
       paymentPin,
       categories: CATEGORIES,
       monthlySpent,
