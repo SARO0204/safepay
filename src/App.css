@@ -497,9 +497,11 @@ button {
 }
 .scanner-frame {
   position: relative;
-  width: 100%;
+  width: min(100%, 420px);
   aspect-ratio: 1 / 1;
+  max-height: min(72dvh, 420px);
   min-height: 0;
+  margin: 0 auto;
   display: grid;
   place-items: center;
   overflow: hidden;
@@ -599,7 +601,19 @@ button {
   margin-top: 7px;
 }
 .scanner-cancel {
-  margin-top: 22px;
+  margin-top: 14px;
+}
+.scanner-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.scanner-content > * {
+  width: 100%;
+  max-width: 420px;
+}
+.scanner-content .scanner-frame {
+  width: min(100%, 420px);
 }
 .dashboard-page main {
   padding: 0 22px;
@@ -1446,5 +1460,30 @@ button {
   }
   .transaction-amount {
     font-size: 13px;
+  }
+}
+
+@media (max-width: 699px) {
+  .scanner-page .page-header {
+    padding-top: 20px;
+    padding-bottom: 12px;
+  }
+  .scanner-page .scanner-frame {
+    width: min(100%, 420px, 72dvh);
+    max-height: none;
+    border-radius: 22px;
+  }
+  .scanner-page .scanner-status {
+    margin: 10px 0 0;
+    min-height: 24px;
+    text-align: center;
+  }
+  .scanner-page .inline-error {
+    margin-top: 10px;
+    padding: 13px;
+  }
+  .scanner-page .inline-error .button {
+    min-height: 46px;
+    margin-top: 4px;
   }
 }
