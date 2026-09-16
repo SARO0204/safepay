@@ -12,7 +12,10 @@ import {
   user,
 } from "../data/mockData.js";
 
-const STORAGE_KEY = "upi-safe-payment-state";
+const LEGACY_STORAGE_KEY = "upi-safe-payment-state";
+const STORAGE_KEY = "upi-safe-wallet-state-v2";
+const STORAGE_VERSION_KEY = "upi-safe-wallet-state-version";
+const CURRENT_WALLET_VERSION = 2;
 const PIN_STORAGE_KEY = "upi-safe-payment-pin";
 const DEFAULT_WALLET_BALANCE = 10000;
 const CATEGORIES = [
@@ -87,67 +90,102 @@ const calculateBalance = (transactions) =>
 
 const PaymentContext = createContext(null);
 
-export function PaymentProvider({ children }) {
-  const [state, setState] = useState(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        const transactions = normalizeTransactions(
-          Array.isArray(parsed.transactions)
-            ? parsed.transactions
-            : initialTransactions,
+function readWalletState() {
+  try {
+    const version = Number(localStorage.getItem(STORAGE_VERSION_KEY) || 0);
+    const savedV2 = localStorage.getItem(STORAGE_KEY);
+
+    if (version >= CURRENT_WALLET_VERSION && savedV2) {
+      const parsed = JSON.parse(savedV2);
+      const transactions = normalizeTransactions(
+        Array.isArray(parsed.transactions)
+          ? parsed.transactions
+          : initialTransactions,
+      );
+      const categoryBudgets = CATEGORIES.reduce((result, category) => {
+        result[category] = normalizeBudget(
+          parsed.categoryBudgets?.[category],
+          DEFAULT_CATEGORY_BUDGETS[category],
         );
-        const categoryBudgets = CATEGORIES.reduce((result, category) => {
-          result[category] = normalizeBudget(
-            parsed.categoryBudgets?.[category],
-            DEFAULT_CATEGORY_BUDGETS[category],
-          );
-          return result;
-        }, {});
-        const hasMeaningfulStoredHistory = transactions.some(
-          (transaction) =>
-            Number.isFinite(Number(transaction.amount)) &&
-            Number(transaction.amount) > 0,
-        );
-        const storedBalance = Number(parsed.balance);
-        const normalizedBalance =
-          Number.isFinite(storedBalance) && storedBalance >= 0
-            ? storedBalance
-            : calculateBalance(transactions);
-        const balance =
-          normalizedBalance === 0 && !hasMeaningfulStoredHistory
-            ? DEFAULT_WALLET_BALANCE
-            : normalizedBalance;
-        return {
-          ...parsed,
-          transactions,
-          spending: calculateSpending(transactions),
-          categoryBudgets,
-          monthlyBudget: normalizeBudget(
-            parsed.monthlyBudget,
-            user.monthlyBudget,
-          ),
-          balance,
-        };
-      }
-    } catch {
-      // Use the demo state if storage is unavailable or malformed.
+        return result;
+      }, {});
+      const storedBalance = Number(parsed.balance);
+      const safeBalance =
+        Number.isFinite(storedBalance) && storedBalance >= 0
+          ? storedBalance
+          : DEFAULT_WALLET_BALANCE;
+
+      return {
+        ...parsed,
+        transactions,
+        spending: calculateSpending(transactions),
+        categoryBudgets,
+        monthlyBudget: normalizeBudget(
+          parsed.monthlyBudget,
+          user.monthlyBudget,
+        ),
+        balance: Math.max(0, safeBalance),
+      };
     }
 
-    return {
-      transactions: normalizeTransactions(initialTransactions),
-      spending: calculateSpending(initialTransactions),
-      monthlyBudget: user.monthlyBudget,
-      categoryBudgets: DEFAULT_CATEGORY_BUDGETS,
-      balance: DEFAULT_WALLET_BALANCE,
+    const legacySaved = localStorage.getItem(LEGACY_STORAGE_KEY);
+    const parsedLegacy = legacySaved ? JSON.parse(legacySaved) : null;
+    const transactions = normalizeTransactions(
+      Array.isArray(parsedLegacy?.transactions)
+        ? parsedLegacy.transactions
+        : initialTransactions,
+    );
+    const categoryBudgets = CATEGORIES.reduce((result, category) => {
+      result[category] = normalizeBudget(
+        parsedLegacy?.categoryBudgets?.[category],
+        DEFAULT_CATEGORY_BUDGETS[category],
+      );
+      return result;
+    }, {});
+
+    const legacyBalance = Number(parsedLegacy?.balance);
+    const migratedBalance =
+      Number.isFinite(legacyBalance) && legacyBalance > 0
+        ? legacyBalance
+        : DEFAULT_WALLET_BALANCE;
+
+    const migratedState = {
+      ...(parsedLegacy || {}),
+      transactions,
+      spending: calculateSpending(transactions),
+      categoryBudgets,
+      monthlyBudget: normalizeBudget(
+        parsedLegacy?.monthlyBudget,
+        user.monthlyBudget,
+      ),
+      balance: Math.max(0, migratedBalance),
     };
-  });
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(migratedState));
+    localStorage.setItem(STORAGE_VERSION_KEY, String(CURRENT_WALLET_VERSION));
+
+    return migratedState;
+  } catch {
+    // Use the demo state if storage is unavailable or malformed.
+  }
+
+  return {
+    transactions: normalizeTransactions(initialTransactions),
+    spending: calculateSpending(initialTransactions),
+    monthlyBudget: user.monthlyBudget,
+    categoryBudgets: DEFAULT_CATEGORY_BUDGETS,
+    balance: DEFAULT_WALLET_BALANCE,
+  };
+}
+
+export function PaymentProvider({ children }) {
+  const [state, setState] = useState(() => readWalletState());
   const stateRef = useRef(state);
   stateRef.current = state;
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    localStorage.setItem(STORAGE_VERSION_KEY, String(CURRENT_WALLET_VERSION));
   }, [state]);
 
   const commitPayment = (payment) => {
@@ -193,7 +231,7 @@ export function PaymentProvider({ children }) {
       committed = true;
       return {
         ...latest,
-        balance: latestBalance - amount,
+        balance: Math.max(0, latestBalance - amount),
         transactions,
         spending: calculateSpending(transactions),
       };
