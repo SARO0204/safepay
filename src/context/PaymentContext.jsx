@@ -22,9 +22,29 @@ const DEFAULT_CATEGORY_BUDGETS = CATEGORIES.reduce((result, category) => {
   return result;
 }, {});
 
+const parseMoney = (value) => {
+  const amount = Number(value);
+  return Number.isFinite(amount) && amount >= 0 ? amount : null;
+};
+
+const parseTransactionAmount = (value) => {
+  const amount = parseMoney(value);
+  return amount > 0 && amount <= user.balance ? amount : null;
+};
+
+const normalizeTransactions = (transactions) =>
+  transactions
+    .filter((transaction) => transaction && typeof transaction === "object")
+    .map((transaction) => {
+      const amount = parseTransactionAmount(transaction.amount);
+      return amount == null ? transaction : { ...transaction, amount };
+    });
+
 const getCompletedTransactions = (transactions) =>
   transactions.filter(
     (transaction) =>
+      parseTransactionAmount(transaction.amount) != null &&
+      transaction.status !== "pending" &&
       transaction.status !== "cancelled" &&
       transaction.status !== "failed" &&
       transaction.status !== "blocked",
@@ -36,7 +56,7 @@ const calculateSpending = (transactions) =>
       const category = CATEGORIES.includes(transaction.category)
         ? transaction.category
         : "Other";
-      result[category] += Number(transaction.amount) || 0;
+      result[category] += parseMoney(transaction.amount) || 0;
       return result;
     },
     Object.fromEntries(CATEGORIES.map((category) => [category, 0])),
@@ -47,6 +67,16 @@ const normalizeBudget = (value, fallback) => {
   return Number.isFinite(budget) && budget > 0 ? budget : fallback;
 };
 
+const calculateBalance = (transactions) =>
+  Math.max(
+    0,
+    user.balance -
+      getCompletedTransactions(transactions).reduce(
+        (total, transaction) => total + parseMoney(transaction.amount),
+        0,
+      ),
+  );
+
 const PaymentContext = createContext(null);
 
 export function PaymentProvider({ children }) {
@@ -55,9 +85,11 @@ export function PaymentProvider({ children }) {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        const transactions = Array.isArray(parsed.transactions)
-          ? parsed.transactions
-          : initialTransactions;
+        const transactions = normalizeTransactions(
+          Array.isArray(parsed.transactions)
+            ? parsed.transactions
+            : initialTransactions,
+        );
         const categoryBudgets = CATEGORIES.reduce((result, category) => {
           result[category] = normalizeBudget(
             parsed.categoryBudgets?.[category],
@@ -74,7 +106,7 @@ export function PaymentProvider({ children }) {
             parsed.monthlyBudget,
             user.monthlyBudget,
           ),
-          balance: parsed.balance ?? user.balance,
+          balance: calculateBalance(transactions),
         };
       }
     } catch {
@@ -82,11 +114,11 @@ export function PaymentProvider({ children }) {
     }
 
     return {
-      transactions: initialTransactions,
+      transactions: normalizeTransactions(initialTransactions),
       spending: calculateSpending(initialTransactions),
       monthlyBudget: user.monthlyBudget,
       categoryBudgets: DEFAULT_CATEGORY_BUDGETS,
-      balance: user.balance,
+      balance: calculateBalance(initialTransactions),
     };
   });
 
@@ -95,14 +127,17 @@ export function PaymentProvider({ children }) {
   }, [state]);
 
   const commitPayment = (payment) => {
+    const amount = parseTransactionAmount(payment.amount);
+    if (amount == null) return null;
     const transaction = {
       ...payment,
+      amount,
       id: payment.id || `T${Date.now()}`,
       status: "success",
     };
     setState((current) => ({
       ...current,
-      balance: Math.max(0, current.balance - transaction.amount),
+      balance: calculateBalance([transaction, ...current.transactions]),
       transactions: [transaction, ...current.transactions],
       spending: calculateSpending([transaction, ...current.transactions]),
     }));

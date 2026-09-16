@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import BottomNav from "../components/BottomNav.jsx";
 import { currentUser } from "../data/mockData.js";
+import { usePayments } from "../context/PaymentContext.jsx";
 
 const methods = [
   ["▣", "Bank account", "1 account"],
@@ -95,6 +96,7 @@ function ReceivingQr({ onClose }) {
 }
 
 function ModalContent({ type, onClose }) {
+  const { paymentPin, setPaymentPin } = usePayments();
   const [settings, setSettings] = useState({
     confirmation: true,
     alerts: true,
@@ -275,8 +277,33 @@ function ModalContent({ type, onClose }) {
         ))}
       </Modal>
     );
+  if (type === "pin") {
+    return (
+      <PaymentPinSetup
+        paymentPin={paymentPin}
+        setPaymentPin={setPaymentPin}
+        onClose={onClose}
+      />
+    );
+  }
   return (
     <Modal title="Settings" onClose={onClose}>
+      <div className="profile-pin-setting">
+        <div>
+          <strong>Payment PIN</strong>
+          <small>
+            {paymentPin
+              ? "Configured for payments above ₹1,000"
+              : "Set a 4-digit demo PIN before high-value payments"}
+          </small>
+        </div>
+        <button
+          className="button button-secondary"
+          onClick={() => onClose("pin")}
+        >
+          {paymentPin ? "Change PIN" : "Set Payment PIN"}
+        </button>
+      </div>
       {[
         ["confirmation", "Payment confirmation"],
         ["alerts", "Security alerts"],
@@ -297,6 +324,78 @@ function ModalContent({ type, onClose }) {
           />
         </label>
       ))}
+    </Modal>
+  );
+}
+
+function PaymentPinSetup({ paymentPin, setPaymentPin, onClose }) {
+  const [pin, setPin] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [error, setError] = useState("");
+
+  const save = () => {
+    if (!/^\d{4}$/.test(pin)) {
+      setError("Create a 4-digit PIN.");
+      return;
+    }
+    if (pin !== confirmation) {
+      setError("PINs do not match.");
+      return;
+    }
+    setPaymentPin(pin);
+    onClose();
+  };
+
+  return (
+    <Modal
+      title={paymentPin ? "Change Payment PIN" : "Set Payment PIN"}
+      onClose={onClose}
+    >
+      <p className="modal-copy">
+        Choose a 4-digit demo PIN for payments above ₹1,000. This is not real
+        UPI or bank authentication.
+      </p>
+      <label className="modal-field" htmlFor="profile-payment-pin">
+        New Payment PIN
+        <input
+          id="profile-payment-pin"
+          className="field-input pin-input"
+          type="password"
+          inputMode="numeric"
+          autoComplete="off"
+          maxLength={4}
+          value={pin}
+          onChange={(event) => {
+            setPin(event.target.value.replace(/\D/g, ""));
+            setError("");
+          }}
+          autoFocus
+        />
+      </label>
+      <label className="modal-field" htmlFor="profile-payment-pin-confirm">
+        Confirm Payment PIN
+        <input
+          id="profile-payment-pin-confirm"
+          className="field-input pin-input"
+          type="password"
+          inputMode="numeric"
+          autoComplete="off"
+          maxLength={4}
+          value={confirmation}
+          onChange={(event) => {
+            setConfirmation(event.target.value.replace(/\D/g, ""));
+            setError("");
+          }}
+        />
+      </label>
+      {error && <p className="error-text">{error}</p>}
+      <p className="pin-demo-note">
+        Demo only: the PIN is stored in localStorage and does not protect a real
+        bank account.
+      </p>
+      <button className="button button-primary" onClick={save}>
+        Save Payment PIN
+      </button>
     </Modal>
   );
 }

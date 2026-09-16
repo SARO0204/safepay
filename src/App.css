@@ -1313,6 +1313,31 @@ button {
   line-height: 1.45;
   margin-top: 14px;
 }
+.profile-pin-setting {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  margin-bottom: 15px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #f7f7fc;
+}
+.profile-pin-setting strong,
+.profile-pin-setting small {
+  display: block;
+}
+.profile-pin-setting strong {
+  font-size: 13px;
+}
+.profile-pin-setting small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+  margin-top: 4px;
+}
+.profile-pin-setting .button {
+  min-height: 46px;
+}
 .budget-category-fields {
   display: grid;
   grid-template-columns: 1fr 1fr;
