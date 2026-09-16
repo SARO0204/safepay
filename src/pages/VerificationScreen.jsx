@@ -123,10 +123,21 @@ export default function VerificationScreen() {
       }),
     });
     if (!result?.transaction) {
-      setAmountError(
-        result?.error ||
-          `Insufficient balance. Available balance: ₹${Number(balance || 0).toLocaleString("en-IN")}.`,
-      );
+      const failureMessage =
+        result?.error === "Transaction failed due to insufficient bank balance"
+          ? "Transaction failed due to insufficient bank balance"
+          : result?.error ||
+            `Insufficient balance. Available balance: ₹${Number(balance || 0).toLocaleString("en-IN")}.`;
+      setFailureState({
+        title: failureMessage,
+        availableBalance: Number(balance || 0),
+        paymentAmount: amount,
+      });
+      window.setTimeout(() => {
+        setFailureState(null);
+        sessionStorage.removeItem(PAYMENT_DRAFT_KEY);
+        navigate("/");
+      }, 1500);
       return;
     }
     paymentCommittedRef.current = true;

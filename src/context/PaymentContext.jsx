@@ -169,7 +169,9 @@ export function PaymentProvider({ children }) {
     if (amount > availableBalance) {
       return {
         transaction: null,
-        error: `Insufficient balance. Available balance: ₹${availableBalance.toLocaleString("en-IN")}. You cannot pay more than your available balance.`,
+        error: "Transaction failed due to insufficient bank balance",
+        availableBalance,
+        paymentAmount: amount,
       };
     }
     const transaction = {
@@ -200,7 +202,9 @@ export function PaymentProvider({ children }) {
       ? { transaction, error: null }
       : {
           transaction: null,
-          error: `Insufficient balance. Available balance: ₹${availableBalance.toLocaleString("en-IN")}. You cannot pay more than your available balance.`,
+          error: "Transaction failed due to insufficient bank balance",
+          availableBalance,
+          paymentAmount: amount,
         };
   };
 
